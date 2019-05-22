@@ -3,13 +3,14 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 
 namespace webshop_exporter.CSV
 {
     public class CsvExporter
     {
-        private static string SEPARATOR = ";";
+        private static readonly string SEPARATOR = ";";
 
         public static async Task Export<T>(Stream stream, IEnumerable<T> rows)
         {
@@ -28,8 +29,13 @@ namespace webshop_exporter.CSV
         private static async Task WriteRow<T>(PropertyInfo[] columns, T row, StreamWriter writer)
         {
             var textColumns = columns.Select(column =>
-                column.GetValue(row).ToString()
-            );
+            {
+                var rawValue = column.GetValue(row);
+                if (rawValue == null)
+                    return "";
+
+                return Regex.Replace(rawValue.ToString(), @"\r\n?|\n", "").Replace(SEPARATOR, "");
+            });
 
             await writer.WriteLineAsync(string.Join(SEPARATOR, textColumns));
         }
