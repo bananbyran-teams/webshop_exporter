@@ -17,24 +17,24 @@ namespace webshop_exporter
 
             using (var db = new skistore_seContext())
             {
-                var shop = await db.PsShop.FirstOrDefaultAsync(x => x.Name == "mtbstore");
-                if (shop == null)
-                    throw new Exception("Failed to find store");
-
-                var langs = await db.PsLang.ToListAsync();
-                foreach (var lang in langs)
+                var shops = await db.PsShop.Where(x => x.Name == "Mtbstore").ToListAsync();
+                foreach (var shop in shops)
                 {
-                    var imageNames = new List<string>();
-                    var exports = new List<ExportModel>();
-                    Console.WriteLine($"Starting export for {lang.IsoCode}");
-                    await ExportProductsFromCategory(db, shop.IdCategory, new List<string>(), shop.IdShop, lang, exports, imageNames);
+                    var langs = await db.PsLang.ToListAsync();
+                    foreach (var lang in langs)
+                    {
+                        var imageNames = new List<string>();
+                        var exports = new List<ExportModel>();
+                        Console.WriteLine($"Starting export for {lang.IsoCode} on {shop.Name}");
+                        await ExportProductsFromCategory(db, shop.IdCategory, new List<string>(), shop.IdShop, lang, exports, imageNames);
 
-                    var fileName = $"export-{lang.IsoCode}.csv";
-                    await CsvExporter.Export(File.OpenWrite(fileName), exports);
+                        var fileName = $"export-{shop.Name}-{lang.IsoCode}.csv";
+                        await CsvExporter.Export(File.OpenWrite(fileName), exports, new ExportOptions { WriteSep = false });
 
-                    GenerateImageDownloadFilelist(imageNames);
+                        GenerateImageDownloadFilelist(shop, imageNames);
 
-                    Console.WriteLine($"Exported {exports.Count} products");
+                        Console.WriteLine($"Exported {exports.Count} products");
+                    }
                 }
 
             }
@@ -43,9 +43,9 @@ namespace webshop_exporter
             Console.ReadKey();
         }
 
-        private static void GenerateImageDownloadFilelist(List<string> imageNames)
+        private static void GenerateImageDownloadFilelist(PsShop shop, List<string> imageNames)
         {
-            File.WriteAllLines("images.txt", imageNames
+            File.WriteAllLines($"images-{shop.Name}.txt", imageNames
                 .Distinct()
                 .Select(x => $"{x}"));
         }
@@ -91,7 +91,7 @@ namespace webshop_exporter
                     if (productAttributes.Any())
                     {
                         //Add parent row
-                        exports.Add(new ExportModel
+                        AddOrReplaceExportModel(exports, new ExportModel
                         {
                             Ean = product.Ean13,
                             Reference = product.Reference,
@@ -111,7 +111,8 @@ namespace webshop_exporter
                             Image3 = images.ElementAtOrDefault(2) != null ? $"{images.ElementAtOrDefault(2).IdImage}.jpg" : "",
                             Image4 = images.ElementAtOrDefault(3) != null ? $"{images.ElementAtOrDefault(3).IdImage}.jpg" : "",
                             Image5 = images.ElementAtOrDefault(4) != null ? $"{images.ElementAtOrDefault(4).IdImage}.jpg" : "",
-                            Tags = string.Join(',', tags)
+                            Tags = string.Join(',', tags),
+                            CategoryDepth = localCategoryPath.Count
                         });
 
                         //Add child rows
@@ -133,7 +134,7 @@ namespace webshop_exporter
                                 .FirstOrDefaultAsync();
 
 
-                            exports.Add(new ExportModel
+                            AddOrReplaceExportModel(exports, new ExportModel
                             {
                                 Ean = productAttribute.Ean13,
                                 Reference = productAttribute.Reference,
@@ -147,8 +148,7 @@ namespace webshop_exporter
                                 SubCategory1 = localCategoryPath.ElementAtOrDefault(1) ?? "",
                                 SubCategory2 = localCategoryPath.ElementAtOrDefault(2) ?? "",
                                 SubCategory3 = localCategoryPath.ElementAtOrDefault(3) ?? "",
-                                AttributeName = attributes?.GroupName ?? "",
-                                AttributeValue = attributes?.Name ?? "",
+                                Attributes = new Dictionary<string, string> { { attributes?.GroupName ?? "", attributes?.Name ?? "" } },
                                 Measurment = $"{Convert.ToInt32(product.Width)}x{Convert.ToInt32(product.Height)}x{Convert.ToInt32(product.Depth)}",
                                 Weight = Convert.ToInt32(productAttribute.Weight).ToString(),
                                 Image1 = images.ElementAtOrDefault(0) != null ? $"{images.ElementAtOrDefault(0).IdImage}.jpg" : "",
@@ -156,14 +156,15 @@ namespace webshop_exporter
                                 Image3 = images.ElementAtOrDefault(2) != null ? $"{images.ElementAtOrDefault(2).IdImage}.jpg" : "",
                                 Image4 = images.ElementAtOrDefault(3) != null ? $"{images.ElementAtOrDefault(3).IdImage}.jpg" : "",
                                 Image5 = images.ElementAtOrDefault(4) != null ? $"{images.ElementAtOrDefault(4).IdImage}.jpg" : "",
-                                Tags = string.Join(',', tags)
+                                Tags = string.Join(',', tags),
+                                CategoryDepth = localCategoryPath.Count
                             });
                         }
                     }
                     else
                     {
                         //Add parent row
-                        exports.Add(new ExportModel
+                        AddOrReplaceExportModel(exports, new ExportModel
                         {
                             Ean = product.Ean13,
                             Reference = product.Reference,
@@ -183,12 +184,31 @@ namespace webshop_exporter
                             Image3 = images.ElementAtOrDefault(2) != null ? $"{images.ElementAtOrDefault(2).IdImage}.jpg" : "",
                             Image4 = images.ElementAtOrDefault(3) != null ? $"{images.ElementAtOrDefault(3).IdImage}.jpg" : "",
                             Image5 = images.ElementAtOrDefault(4) != null ? $"{images.ElementAtOrDefault(4).IdImage}.jpg" : "",
-                            Tags = string.Join(',', tags)
+                            Tags = string.Join(',', tags),
+                            CategoryDepth = localCategoryPath.Count
                         });
                     }
                 }
 
                 await ExportProductsFromCategory(db, category.IdCategory, localCategoryPath, shopId, lang, exports, imageNames);
+            }
+        }
+
+        private static void AddOrReplaceExportModel(List<ExportModel> exports, ExportModel export)
+        {
+            var existingExport = exports.FirstOrDefault(x => x.Reference == export.Reference);
+            if (existingExport != null)
+            {
+                if(existingExport.CategoryDepth < export.CategoryDepth)
+                {
+                    var index = exports.IndexOf(existingExport);
+                    exports.Insert(index, export);
+                    exports.Remove(existingExport);
+                }
+            }
+            else
+            {
+                exports.Add(export);
             }
         }
     }
