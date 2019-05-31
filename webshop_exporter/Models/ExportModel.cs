@@ -68,7 +68,7 @@ namespace webshop_exporter.Models
         [Header("Mått (mm)")]
         public string Measurment { get; set; }
 
-        [Header("Pris (exkl moms)")]
+        [Header("Pris (inkl moms)")]
         public string Price { get; set; }
 
         [Header("Bild-1")]

@@ -47,7 +47,7 @@ namespace webshop_exporter.CSV
                                 GetValue = (o, n) => (o as IDynamicColumns)?.GetValue(n) ?? ""
                             });
 
-                    foreach(var col in newCols)
+                    foreach (var col in newCols)
                     {
                         if (!columns.Any(c => c.Name == col.Name))
                             columns.Add(col);
@@ -81,7 +81,9 @@ namespace webshop_exporter.CSV
 
         private static async Task WriteHeaderRow<T>(List<Column<T>> columns, StreamWriter writer)
         {
-            var headers = columns.Select(column => column.Name);
+            var headers = columns.Select(column =>
+                Regex.Replace(column.Name, @"\r\n?|\n", "").Replace(SEPARATOR, ""));
+
             await writer.WriteLineAsync(string.Join(SEPARATOR, headers));
         }
     }
